@@ -45,7 +45,6 @@ const int LOADCELL_SCK_PIN = 3;
 HX711 scale;
 
 MFRC522 mfrc522(SDA_PIN, RST_PIN);
-
 int temp = 0;
 int total = 0;
 bool addMode = true;
