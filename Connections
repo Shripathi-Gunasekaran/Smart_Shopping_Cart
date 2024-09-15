@@ -1,0 +1,37 @@
+1. LCD Display (I2C Liquid Crystal)
+SDA (Serial Data) -> Arduino A4
+SCL (Serial Clock) -> Arduino A5
+VCC -> 5V
+GND -> GND
+2. RFID Reader (MFRC522)
+SDA -> Arduino Pin 10
+SCK -> Arduino Pin 13
+MOSI -> Arduino Pin 11
+MISO -> Arduino Pin 12
+RST -> Arduino Pin 9
+GND -> GND
+VCC -> 3.3V
+3. HX711 Load Cell Amplifier
+DT (DOUT) -> Arduino Pin 2
+SCK -> Arduino Pin 3
+VCC -> 5V
+GND -> GND
+4. Relays
+Relay 1 IN -> Arduino Pin 5
+Relay 2 IN -> Arduino Pin 4
+VCC -> 5V
+GND -> GND
+5. LEDs
+LED1 (Add Mode) -> Arduino Pin 6 (with resistor)
+LED2 (Remove Mode) -> Arduino Pin 8 (with resistor)
+6. Buzzer
+Positive -> Arduino Pin 4
+Negative -> GND
+7. Push Button
+One side -> Arduino Pin 5
+Other side -> GND
+8. GSM Module 
+TX (Transmit) -> Arduino RX Pin
+RX (Receive) -> Arduino TX Pin
+VCC -> 5V
+GND -> GND
