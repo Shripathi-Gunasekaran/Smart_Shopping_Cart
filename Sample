@@ -1,0 +1,268 @@
+#include <SPI.h>
+#include <MFRC522.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <Arduino.h>
+#include "HX711.h"
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+byte rupeeSymbol[8] = {
+  B11111,
+  B00010,
+  B11111,
+  B00010,
+  B01100,
+  B00100,
+  B00010,
+  B00001
+};
+
+struct GroceryItem {
+  String name;
+  int quantity;
+  int price;
+  int expectedWeight;
+  bool scanned;
+};
+
+GroceryItem groceries[] = {
+  {"Milk", 0, 60, 30, false},
+  {"Toor Dal", 0, 150, 3000, false},
+  {"Oil", 0, 150, 1000, false},
+  {"Sugar", 0, 60, 1000, false}
+};
+
+#define NUM_GROCERIES sizeof(groceries) / sizeof(groceries[0])
+#define relay1 5
+#define relay2 4
+#define led1 A0
+#define buzzerPin 4
+#define RST_PIN    9
+#define SDA_PIN    10
+#define BUTTON_PIN 5 
+const int LOADCELL_DOUT_PIN = 2;
+const int LOADCELL_SCK_PIN = 3;
+
+MFRC522 mfrc522(SDA_PIN, RST_PIN);
+HX711 scale;
+
+int temp = 0;
+int total = 0;
+bool addMode = true;
+
+void performAction(int pin);
+void addGrocery(int index, const char* name, int price);
+void remGrocery(int index, const char* name, int price);
+void displayMessage(const char* message);
+void rfid();
+
+void setup() {
+  lcd.init();
+  lcd.backlight();
+  Serial.begin(9600);
+  SPI.begin();
+  mfrc522.PCD_Init();
+  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+
+  pinMode(relay1, OUTPUT);
+  pinMode(relay2, OUTPUT);
+  pinMode(led1, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP); 
+  pinMode(buzzerPin, OUTPUT);
+  pinMode(6, OUTPUT);  
+  pinMode(7, OUTPUT);   
+  lcd.clear();
+  lcd.createChar(0, rupeeSymbol);
+  lcd.setCursor(0, 0);
+  lcd.print(" SMART SHOPPING");
+  lcd.setCursor(0, 1);
+  lcd.print("     CART");
+  delay(2000);
+}
+
+void loop() {
+  rfid();
+
+  float measuredWeight = scale.read(); 
+
+  if (measuredWeight > 30) {
+    bool unscannedDetected = true;
+
+    for (int i = 0; i < NUM_GROCERIES; i++) {
+      if (measuredWeight > groceries[i].expectedWeight + 30 || measuredWeight < groceries[i].expectedWeight - 30) {
+        unscannedDetected = false; 
+        break;
+      }
+    }
+
+    if (unscannedDetected) {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Scam Detected!");
+      digitalWrite(buzzerPin, HIGH);
+      delay(1000);
+      digitalWrite(buzzerPin, LOW);
+    }
+  }
+
+  if (digitalRead(BUTTON_PIN) == LOW) {
+    delay(50); 
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      addMode = !addMode; 
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      performAction(4);
+      lcd.print(addMode ? "Add Product" : "Remove Product");
+    }
+  }
+
+  if (temp == 1) {
+    temp = 0;
+    delay(1000);
+  }
+}
+
+void rfid() {
+  if (!mfrc522.PICC_IsNewCardPresent()) {
+    return;
+  }
+  if (!mfrc522.PICC_ReadCardSerial()) {
+    return;
+  }
+  
+  String content = "";
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+    content.concat(String(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " "));
+    content.concat(String(mfrc522.uid.uidByte[i], HEX));
+  }
+  content.toUpperCase();
+
+  if (addMode) {
+    if (content.substring(1) == "3D 92 56 62") {
+      performAction(7);
+      addGrocery(0, "Milk", 60);
+      displayMessage("30g Milk + Coffee powder: 10% Off");
+      performAction(7);
+    } else if (content.substring(1) == "03 8C F9 2F") {
+      performAction(7);
+      addGrocery(1, "Toor Dal", 150);
+      displayMessage("3000g Dal + Sambar Masala: 15% Off");
+      performAction(7);
+    } else if (content.substring(1) == "86 7D D8 FA") {
+      performAction(7);
+      addGrocery(2, "Oil", 150);
+      displayMessage("1000g oil + Mustard: 8% Off");
+      performAction(7);
+    } else if (content.substring(1) == "FC 12 44 44") {
+      performAction(7);
+      addGrocery(3, "Sugar", 60);
+      displayMessage("1000g Sugar + Vermicelli: 12% Off");
+      performAction(7);
+    } else {
+      lcd.clear();
+      performAction(6);
+      digitalWrite(buzzerPin, HIGH);
+      delay(1000);
+      lcd.setCursor(0, 0);
+      lcd.print("Unknown  Product");
+    }
+  } else {
+    if (content.substring(1) == "3D 92 56 62") {
+      performAction(6);
+      remGrocery(0, "Milk", 60);
+      displayMessage("30g Milk + Coffee powder: 10% Off");
+      performAction(6);
+    } else if (content.substring(1) == "03 8C F9 2F") {
+      performAction(6);
+      remGrocery(1, "Toor Dal", 150);
+      displayMessage("3000g Dal + Sambar Masala: 15% Off");
+      performAction(6);
+    } else if (content.substring(1) == "86 7D D8 FA") {
+      performAction(6);
+      remGrocery(2, "Oil", 150);
+      displayMessage("1000g oil + Mustard: 8% Off");
+      performAction(6);
+    } else if (content.substring(1) == "FC 12 44 44") {
+      performAction(6);
+      remGrocery(3, "Sugar", 60);
+      displayMessage("1000g Sugar + Vermicelli: 12% Off");
+      performAction(6);
+    } else {
+      lcd.clear();
+      performAction(6);
+      digitalWrite(buzzerPin, HIGH);
+      delay(1000);
+      lcd.setCursor(0, 0);
+      lcd.print("Unknown  Product");
+    }
+  }
+  lcd.setCursor(0, 1);
+  lcd.print("TotalAmount:");
+  lcd.print(total);
+  lcd.write((byte)0);
+}
+
+void addGrocery(int index, const char* name, int price) {
+  if (index >= 0 && index < NUM_GROCERIES) {
+    groceries[index].quantity++;
+    total += price;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(name);
+    lcd.print(" Added");
+    lcd.setCursor(0, 1);
+    lcd.print("Price: ");
+    lcd.write((byte)0);
+    lcd.print(price);
+    delay(1000);
+    digitalWrite(relay2, HIGH);
+    digitalWrite(led1, HIGH);
+    delay(1000);
+    digitalWrite(relay2, LOW);
+    digitalWrite(led1, LOW);
+  }
+}
+
+void remGrocery(int index, const char* name, int price) {
+  if (index >= 0 && index < NUM_GROCERIES) {
+    groceries[index].quantity--;
+    total -= price;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(name);
+    lcd.print(" Removed");
+    lcd.setCursor(0, 1);
+    lcd.print("Price: ");
+    lcd.write((byte)0);
+    lcd.print(price);
+    delay(1000);
+    digitalWrite(relay2, HIGH);
+    digitalWrite(led1, HIGH);
+    delay(1000);
+    digitalWrite(relay2, LOW);
+    digitalWrite(led1, LOW);
+  }
+}
+
+void performAction(int pin) {
+  digitalWrite(pin, HIGH); 
+  delay(200);
+  digitalWrite(pin, LOW);  
+  delay(200);
+  digitalWrite(pin, HIGH); 
+  digitalWrite(buzzerPin, HIGH);
+  delay(200);
+  digitalWrite(pin, LOW);  
+  digitalWrite(buzzerPin, LOW); 
+  delay(200);
+}
+
+void displayMessage(const char* message) {
+  for (int i = 0; i < strlen(message); i++) {
+    lcd.clear();
+    lcd.setCursor(0, 1);
+    lcd.print(message + i);
+    delay(250);
+  }
+}
